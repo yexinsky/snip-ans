@@ -1,0 +1,52 @@
+   Compiling snip-ans v0.1.0 (C:\mywork\document2025\SnapAns-anti\snip-ans\src-tauri)
+warning: unused import: `Listener`
+ --> src\lib.rs:6:22
+  |
+6 | use tauri::{Emitter, Listener}; // Listener not strictly needed unless we listen in rust
+  |                      ^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+error[E0599]: no method named `rgba` found for struct `screenshots::image::ImageBuffer<screenshots::image::Rgba<u8>, Vec<u8>>` in the current scope
+  --> src\screenshot.rs:14:22
+   |
+14 |     let rgba = image.rgba();
+   |                      ^^^^
+   |
+help: there is a method `as_rgba` with a similar name
+   |
+14 |     let rgba = image.as_rgba();
+   |                      +++
+
+error: future cannot be sent between threads safely
+   --> src\lib.rs:73:25
+    |
+ 73 | /                         tauri::async_runtime::spawn(async move {
+ 74 | |                              let config = load_config(&app);
+ 75 | |                              match screenshot::capture_primary_screen() {
+ 76 | |                                  Ok(base64_img) => {
+...   |
+102 | |                         });
+    | |__________________________^ future created by async block is not `Send`
+    |
+    = help: the trait `Send` is not implemented for `dyn StdError`
+note: future is not `Send` as this value is used across an await
+   --> src\lib.rs:78:80
+    |
+ 75 | ...                   match screenshot::capture_primary_screen() {
+    |                             ------------------------------------ has type `Result<std::string::String, Box<dyn StdError>>` which is not `Send`
+...
+ 78 | ...                           match api::query_ai(&config, &base64_img).await {
+    |                                                                         ^^^^^ await occurs here, with `screenshot::capture_primary_screen()` maybe used later
+note: required by a bound in `tauri::async_runtime::spawn`
+   --> C:\Users\cccake\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\tauri-2.9.5\src\async_runtime.rs:270:15
+    |
+268 | pub fn spawn<F>(task: F) -> JoinHandle<F::Output>
+    |        ----- required by a bound in this function
+269 | where
+270 |   F: Future + Send + 'static,
+    |               ^^^^ required by this bound in `spawn`
+
+For more information about this error, try `rustc --explain E0599`.
+warning: `snip-ans` (lib) generated 1 warning
+error: could not compile `snip-ans` (lib) due to 2 previous errors; 1 warning emitted

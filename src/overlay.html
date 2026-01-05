@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SnipAns Overlay</title>
+    <!-- Marked.js for Markdown rendering -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <!-- KaTeX for LaTeX rendering -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
+    <style>
+        html,
+        body {
+            background: transparent;
+            height: 100%;
+            width: 100%;
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+        }
+
+        body {
+            font-family: 'Segoe UI', sans-serif;
+            display: flex;
+            flex-direction: column;
+            /* Default to drag; specific interactive elements will set no-drag */
+            -webkit-app-region: drag;
+        }
+
+        /* Normal style - default state */
+        body.normal {
+            background: rgba(30, 30, 30, 0.85);
+            color: #eee;
+            border-radius: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+            transition: background 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        /* Stealth style - fully transparent */
+        body.stealth {
+            background: rgba(0, 0, 0, 0.00);
+            color: #000;
+            border: none;
+            border-radius: 0;
+            box-shadow: none;
+            transition: background 0.15s ease;
+        }
+
+        /* Stealth active state - clicked to reveal */
+        body.stealth.active {
+            background: rgba(0, 0, 0, 0.05);
+        }
+
+        /* Close Button Common */
+        #close {
+            position: absolute;
+            top: 2px;
+            right: 2px;
+            cursor: pointer;
+            border: none;
+            font-size: 14px;
+            line-height: 1;
+            padding: 2px 5px;
+            border-radius: 4px;
+            transition: opacity 0.15s ease, background 0.15s ease;
+            -webkit-app-region: no-drag;
+            z-index: 20;
+        }
+
+        /* Normal Mode: Close button */
+        body.normal #close {
+            background: rgba(255, 255, 255, 0.1);
+            color: #888;
+            opacity: 0;
+        }
+
+        body.normal:hover #close {
+            opacity: 1;
+        }
+
+        body.normal #close:hover {
+            color: white;
+            background: rgba(255, 80, 80, 0.8);
+        }
+
+        /* Stealth Mode: Close button hidden by default */
+        body.stealth #close {
+            opacity: 0;
+            pointer-events: none;
+            background: rgba(200, 200, 200, 0.4);
+            color: #333;
+        }
+
+        /* Stealth active: show close button */
+        body.stealth.active #close {
+            opacity: 0.8;
+            pointer-events: auto;
+        }
+
+        body.stealth #close:hover {
+            opacity: 1;
+            background: #ff5555;
+            color: white;
+        }
+
+        #content {
+            flex: 1;
+            padding: 4px 8px;
+            overflow-y: auto;
+            font-size: 14px;
+            white-space: normal;
+            word-wrap: break-word;
+            line-height: 1.5;
+            cursor: default;
+        }
+
+        body.stealth #content {
+            font-weight: normal;
+            cursor: default;
+        }
+
+        /* Markdown styles */
+        #content p {
+            margin: 0.3em 0;
+        }
+
+        #content h1,
+        #content h2,
+        #content h3,
+        #content h4 {
+            margin: 0.4em 0 0.2em;
+        }
+
+        #content code {
+            background: rgba(128, 128, 128, 0.2);
+            padding: 0.1em 0.3em;
+            border-radius: 3px;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 0.9em;
+        }
+
+        #content pre {
+            background: rgba(0, 0, 0, 0.2);
+            padding: 0.5em;
+            border-radius: 4px;
+            overflow-x: auto;
+            margin: 0.3em 0;
+        }
+
+        #content pre code {
+            background: transparent;
+            padding: 0;
+        }
+
+        #content ul,
+        #content ol {
+            margin: 0.3em 0;
+            padding-left: 1.5em;
+        }
+
+        #content li {
+            margin: 0.1em 0;
+        }
+
+        #content blockquote {
+            border-left: 3px solid rgba(128, 128, 128, 0.5);
+            margin: 0.3em 0;
+            padding-left: 0.8em;
+            color: inherit;
+            opacity: 0.9;
+        }
+
+        /* Loading animation */
+        .loading-dots {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .loading-dots span {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: currentColor;
+            animation: loading-bounce 1.2s infinite ease-in-out;
+        }
+
+        .loading-dots span:nth-child(1) {
+            animation-delay: 0s;
+        }
+
+        .loading-dots span:nth-child(2) {
+            animation-delay: 0.2s;
+        }
+
+        .loading-dots span:nth-child(3) {
+            animation-delay: 0.4s;
+        }
+
+        @keyframes loading-bounce {
+
+            0%,
+            80%,
+            100% {
+                opacity: 0.3;
+                transform: scale(0.8);
+            }
+
+            40% {
+                opacity: 1;
+                transform: scale(1);
+            }
+        }
+
+        /* Scrollbar styling */
+        ::-webkit-scrollbar {
+            width: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #555;
+            border-radius: 2px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        body.stealth ::-webkit-scrollbar-thumb {
+            background: rgba(0, 0, 0, 0.2);
+        }
+
+        /* KaTeX adjustments */
+        .katex {
+            font-size: 1em;
+        }
+
+        .katex-display {
+            margin: 0.3em 0;
+            overflow-x: auto;
+            overflow-y: hidden;
+        }
+    </style>
+</head>
+
+<body class="normal">
+    <button id="close" title="Hide">×</button>
+    <div id="content">waiting...</div>
+    <script>
+        const { listen } = window.__TAURI__.event;
+        const { getCurrentWindow } = window.__TAURI__.window;
+        const { invoke } = window.__TAURI__.core;
+
+        const output = document.getElementById('content');
+        let isLoading = false;
+
+        document.getElementById('close').onclick = (e) => {
+            e.stopPropagation();
+            getCurrentWindow().hide();
+        };
+
+        // Render Markdown and LaTeX content
+        function renderContent(text) {
+            // First render Markdown
+            let html = marked.parse(text);
+            output.innerHTML = html;
+
+            // Then render LaTeX with KaTeX
+            if (typeof renderMathInElement !== 'undefined') {
+                renderMathInElement(output, {
+                    delimiters: [
+                        { left: '$$', right: '$$', display: true },
+                        { left: '$', right: '$', display: false },
+                        { left: '\\[', right: '\\]', display: true },
+                        { left: '\\(', right: '\\)', display: false }
+                    ],
+                    throwOnError: false,
+                    strict: false
+                });
+            }
+        }
+
+        // Show loading animation
+        function showLoading() {
+            isLoading = true;
+            output.innerHTML = '<div class="loading-dots"><span></span><span></span><span></span></div>';
+        }
+
+        // Stop loading animation
+        function stopLoading() {
+            isLoading = false;
+        }
+
+        // Load style and font size from config
+        async function loadConfig() {
+            try {
+                const config = await invoke('get_config');
+                if (config.overlay_style === 'stealth') {
+                    document.body.className = 'stealth';
+                } else {
+                    document.body.className = 'normal';
+                }
+                // Apply font size
+                if (config.font_size) {
+                    output.style.fontSize = config.font_size + 'px';
+                }
+            } catch (e) {
+                console.error('Failed to load config:', e);
+            }
+        }
+
+        loadConfig();
+
+        // Listen for loading start event
+        listen('loading-start', (event) => {
+            console.log('Loading started');
+            showLoading();
+        });
+
+        // Listen for loading end event
+        listen('loading-end', (event) => {
+            console.log('Loading ended');
+            stopLoading();
+        });
+
+        // Listen for answer events
+        listen('new-answer', (event) => {
+            console.log('Received new-answer event:', event);
+            stopLoading();
+            renderContent(event.payload);
+        });
+
+        // Listen for style change events
+        listen('style-change', (event) => {
+            const newClass = event.payload === 'stealth' ? 'stealth' : 'normal';
+            document.body.className = newClass;
+        });
+
+        // Listen for font size change events
+        listen('font-size-change', (event) => {
+            output.style.fontSize = event.payload + 'px';
+        });
+
+        // Stealth mode interaction: click to toggle active state
+        // Click inside window -> show semi-transparent + close button
+        // Click outside (window blur) -> hide back to transparent
+
+        document.body.addEventListener('click', () => {
+            if (document.body.classList.contains('stealth')) {
+                document.body.classList.add('active');
+            }
+        });
+
+        // When window loses focus (clicked outside), remove active state
+        window.addEventListener('blur', () => {
+            document.body.classList.remove('active');
+        });
+    </script>
+</body>
+
+</html>
