@@ -6,15 +6,15 @@ function createIcon(size, text, filename) {
   const canvas = createCanvas(size, size);
   const ctx = canvas.getContext('2d');
 
-  // Background
-  ctx.fillStyle = '#2196F3'; // Blue
+  // Background - Blue gradient effect
+  ctx.fillStyle = '#2196F3';
 
   if (size <= 32) {
     // Simple square for small sizes to ensure visibility
     ctx.fillRect(0, 0, size, size);
   } else {
     // Rounded rect for larger
-    const r = size * 0.2;
+    const r = size * 0.15;
     ctx.beginPath();
     ctx.moveTo(r, 0);
     ctx.lineTo(size - r, 0);
@@ -29,31 +29,38 @@ function createIcon(size, text, filename) {
     ctx.fill();
   }
 
-  // Text "S"
+  // Text "S" - white, bold
   ctx.fillStyle = '#FFFFFF';
-  ctx.font = `bold ${Math.floor(size * 0.7)}px Arial`;
+  ctx.font = `bold ${Math.floor(size * 0.65)}px Arial`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText(text, size / 2, size / 2 + size * 0.05);
+  ctx.fillText(text, size / 2, size / 2 + size * 0.03);
 
   const buffer = canvas.toBuffer('image/png');
   fs.writeFileSync(filename, buffer);
-  console.log(`Created ${filename}`);
+  console.log(`Created ${filename} (${size}x${size})`);
 }
 
 const iconsDir = path.join(__dirname, 'src-tauri', 'icons');
 
+// Standard Tauri icons
 createIcon(32, 'S', path.join(iconsDir, '32x32.png'));
-// Generate other sizes just in case
 createIcon(128, 'S', path.join(iconsDir, '128x128.png'));
-createIcon(128, 'S', path.join(iconsDir, '128x128@2x.png')); // Same size for now or double? Should be double.
-// createIcon(256, 'S', path.join(iconsDir, '128x128@2x.png')); // logic above overwrite, fix later if needed.
+createIcon(256, 'S', path.join(iconsDir, '128x128@2x.png'));
 createIcon(128, 'S', path.join(iconsDir, 'icon.png'));
 
-// Need basic ico/icns? Maybe just pngs are enough for tray if configured right.
-// But windows needs .ico for exe usually.
-// I'll skip complex ico generation for now, focuses on Tray which uses png in Tauri usually if configured?
-// Actually for tray-icon feature:
-// In tauri.conf.json: "icon": ["icons/32x32.png", ...]
-// Tray usage in Rust: TrayIconBuilder::new().icon(...) or default app icon.
-// I will ensure the 32x32.png is updated. That is used for tray often.
+// Windows Store Logos
+createIcon(30, 'S', path.join(iconsDir, 'Square30x30Logo.png'));
+createIcon(44, 'S', path.join(iconsDir, 'Square44x44Logo.png'));
+createIcon(50, 'S', path.join(iconsDir, 'StoreLogo.png'));
+createIcon(71, 'S', path.join(iconsDir, 'Square71x71Logo.png'));
+createIcon(89, 'S', path.join(iconsDir, 'Square89x89Logo.png'));
+createIcon(107, 'S', path.join(iconsDir, 'Square107x107Logo.png'));
+createIcon(142, 'S', path.join(iconsDir, 'Square142x142Logo.png'));
+createIcon(150, 'S', path.join(iconsDir, 'Square150x150Logo.png'));
+createIcon(284, 'S', path.join(iconsDir, 'Square284x284Logo.png'));
+createIcon(310, 'S', path.join(iconsDir, 'Square310x310Logo.png'));
+
+console.log('\nAll icons generated successfully!');
+console.log('Note: You need to manually create icon.ico and icon.icns for Windows/Mac builds.');
+console.log('Use a tool like https://icoconvert.com/ or png2ico to create .ico from 256x256 PNG.');
