@@ -29,3 +29,7 @@ arboard = "3.6.1"
 base64 = "0.22.1"
 image = "0.25.9"
 
+[dev-dependencies]
+# 仅测试用：驱动 fetch_models 这类异步函数的 #[tokio::test]
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+

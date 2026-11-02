@@ -248,8 +248,8 @@
 </head>
 
 <body class="normal">
-    <button id="close" title="Hide">×</button>
-    <div id="content">waiting...</div>
+    <button id="close" title="隐藏">×</button>
+    <div id="content">就绪，等待截图…</div>
     <script>
         const { listen } = window.__TAURI__.event;
         const { getCurrentWindow } = window.__TAURI__.window;
@@ -309,45 +309,43 @@
                     output.style.fontSize = config.font_size + 'px';
                 }
             } catch (e) {
-                console.error('Failed to load config:', e);
+                console.error('加载配置失败：', e);
             }
         }
 
         loadConfig();
 
-        // Listen for loading start event
+        // 开始加载
         listen('loading-start', (event) => {
-            console.log('Loading started');
+            console.log('开始加载');
             showLoading();
         });
 
-        // Listen for loading end event
+        // 结束加载
         listen('loading-end', (event) => {
-            console.log('Loading ended');
+            console.log('加载结束');
             stopLoading();
         });
 
-        // Listen for answer events
+        // 收到答案
         listen('new-answer', (event) => {
-            console.log('Received new-answer event:', event);
+            console.log('收到答案事件：', event);
             stopLoading();
             renderContent(event.payload);
         });
 
-        // Listen for style change events
+        // 样式变更
         listen('style-change', (event) => {
             const newClass = event.payload === 'stealth' ? 'stealth' : 'normal';
             document.body.className = newClass;
         });
 
-        // Listen for font size change events
+        // 字号变更
         listen('font-size-change', (event) => {
             output.style.fontSize = event.payload + 'px';
         });
 
-        // Stealth mode interaction: click to toggle active state
-        // Click inside window -> show semi-transparent + close button
-        // Click outside (window blur) -> hide back to transparent
+        // 隐身模式交互：点击窗口内显示关闭按钮，失焦后恢复全透明
 
         document.body.addEventListener('click', () => {
             if (document.body.classList.contains('stealth')) {

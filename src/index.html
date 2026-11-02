@@ -1,169 +1,114 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-CN">
 
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>SnipAns Settings</title>
-  <style>
-    :root {
-      font-family: Inter, Avenir, Helvetica, Arial, sans-serif;
-      font-size: 16px;
-      line-height: 24px;
-      font-weight: 400;
-      color-scheme: light dark;
-      color: rgba(255, 255, 255, 0.87);
-      background-color: #242424;
-    }
-
-    body {
-      margin: 0;
-      padding: 20px;
-      display: flex;
-      flex-direction: column;
-      gap: 20px;
-      max-width: 600px;
-      margin: 0 auto;
-    }
-
-    h1 {
-      margin: 0;
-      font-size: 1.5em;
-    }
-
-    .field {
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-    }
-
-    label {
-      font-weight: bold;
-      font-size: 0.9em;
-      color: #aaa;
-    }
-
-    input,
-    select,
-    textarea {
-      padding: 8px;
-      border-radius: 4px;
-      border: 1px solid #444;
-      background: #333;
-      color: white;
-      font-family: inherit;
-    }
-
-    textarea {
-      resize: vertical;
-      min-height: 80px;
-    }
-
-    button {
-      padding: 10px 20px;
-      background-color: #646cff;
-      color: white;
-      border: none;
-      border-radius: 4px;
-      font-weight: bold;
-      cursor: pointer;
-      align-self: flex-end;
-    }
-
-    button:hover {
-      background-color: #535bf2;
-    }
-
-    #status {
-      font-size: 0.9em;
-      color: #888;
-      text-align: right;
-    }
-  </style>
+  <title>SnipAns 设置</title>
+  <link rel="stylesheet" href="styles.css" />
 </head>
 
 <body>
-  <h1>SnipAns Configuration</h1>
+  <h1>SnipAns 设置</h1>
+
+  <h2>模型服务</h2>
 
   <div class="field">
-    <label for="api_protocol">API Protocol</label>
-    <select id="api_protocol">
-      <option value="openai">OpenAI Compatible (Default)</option>
-      <option value="gemini">Google Gemini Native</option>
+    <label for="provider">供应商</label>
+    <select id="provider">
+      <!-- 由 main.js 依据后端返回的预设填充 -->
     </select>
+    <small class="hint" id="provider-hint"></small>
   </div>
 
   <div class="field">
     <label for="api_key">API Key</label>
-    <input type="password" id="api_key" placeholder="sk-..." />
+    <input type="password" id="api_key" placeholder="请填写 API Key" autocomplete="off" />
   </div>
 
   <div class="field">
-    <label for="api_endpoint">API Endpoint</label>
-    <input type="text" id="api_endpoint" placeholder="https://api.openai.com/v1/chat/completions" />
+    <label for="api_endpoint">API 端点</label>
+    <input type="text" id="api_endpoint" placeholder="例如 https://api.deepseek.com/chat/completions" />
+    <small class="hint">需填写完整的对话接口地址（含 chat/completions 或 generateContent）。</small>
   </div>
 
   <div class="field">
-    <label for="model_name">Model Name</label>
-    <input type="text" id="model_name" placeholder="gpt-4o" />
+    <label for="model_name">模型</label>
+    <div class="row">
+      <select id="model_select">
+        <option value="">（点右侧按钮获取模型列表）</option>
+      </select>
+      <button id="fetch-models" type="button">获取模型</button>
+    </div>
+    <input type="text" id="model_name" placeholder="也可直接手填模型名，例如 deepseek-chat" />
+    <small class="hint" id="model-hint">从上游拉取模型列表用于选择；也可以直接手填模型名。</small>
   </div>
 
   <div class="field">
-    <label for="hotkey">Screenshot Hotkey (Cache Image)</label>
-    <input type="text" id="hotkey" placeholder="Ctrl+Alt+S" />
-    <small style="color:#666">Takes a screenshot and caches it (Max 8). Requires restart</small>
-  </div>
-
-  <div class="field">
-    <label for="send_key">Send Hotkey (Process All)</label>
-    <input type="text" id="send_key" placeholder="Ctrl+Alt+Enter" />
-    <small style="color:#666">Sends all cached images to AI. Requires restart</small>
-  </div>
-
-  <div class="field">
-    <label for="boss_key">Boss Key (Toggle Overlay)</label>
-    <input type="text" id="boss_key" placeholder="Ctrl+Shift+H" />
-    <small style="color:#666">Quickly hide/show overlay. Requires restart to apply</small>
-  </div>
-
-  <div class="field">
-    <label for="output_mode">Output Mode</label>
-    <select id="output_mode">
-      <option value="overlay">Overlay Window</option>
-      <option value="clipboard">Clipboard Only</option>
-      <option value="both">Both (Overlay + Clipboard)</option>
+    <label for="api_protocol">协议</label>
+    <select id="api_protocol">
+      <option value="openai">OpenAI 兼容</option>
+      <option value="gemini">Google Gemini 原生</option>
     </select>
+    <small class="hint">切换供应商时会自动匹配；仅在自定义网关需要时手动调整。</small>
   </div>
 
   <div class="field">
-    <label for="overlay_style">Overlay Style</label>
-    <select id="overlay_style">
-      <option value="normal">Normal (Dark Background)</option>
-      <option value="stealth">Stealth (Transparent, Black Text)</option>
-    </select>
-  </div>
-
-  <div class="field">
-    <label for="font_size">Font Size (px)</label>
-    <input type="number" id="font_size" min="10" max="32" value="14" />
-    <small style="color:#666">Overlay text size (10-32px)</small>
-  </div>
-
-  <div class="field">
-    <label for="prompt">System Prompt</label>
+    <label for="prompt">提示词</label>
     <textarea id="prompt"></textarea>
   </div>
 
+  <h2>快捷键</h2>
+
   <div class="field">
-    <label>Logs</label>
-    <div id="logs"
-      style="background:#111; padding:8px; height:100px; overflow-y:auto; font-family:monospace; font-size:12px; border:1px solid #444; border-radius:4px;">
-    </div>
+    <label for="hotkey">截图快捷键（加入缓存）</label>
+    <input type="text" id="hotkey" placeholder="Ctrl+Alt+S" />
+    <small class="hint">截图并加入缓存队列，最多 8 张。修改后需重启应用。</small>
   </div>
 
-  <div style="display: flex; justify-content: space-between; align-items: center;">
+  <div class="field">
+    <label for="send_key">发送快捷键（识别全部）</label>
+    <input type="text" id="send_key" placeholder="Ctrl+Alt+Enter" />
+    <small class="hint">把缓存中的图片一次性发给 AI。修改后需重启应用。</small>
+  </div>
+
+  <div class="field">
+    <label for="boss_key">老板键（显示/隐藏悬浮窗）</label>
+    <input type="text" id="boss_key" placeholder="Ctrl+Shift+H" />
+    <small class="hint">快速隐藏或显示答案悬浮窗。修改后需重启应用。</small>
+  </div>
+
+  <h2>界面与输出</h2>
+
+  <div class="field">
+    <label for="output_mode">输出方式</label>
+    <select id="output_mode">
+      <option value="overlay">悬浮窗</option>
+      <option value="clipboard">仅剪贴板</option>
+      <option value="both">悬浮窗 + 剪贴板</option>
+    </select>
+  </div>
+
+  <div class="field">
+    <label for="overlay_style">悬浮窗样式</label>
+    <select id="overlay_style">
+      <option value="normal">普通（深色背景）</option>
+      <option value="stealth">隐身（透明背景、黑字）</option>
+    </select>
+  </div>
+
+  <div class="field">
+    <label for="font_size">字号（像素）</label>
+    <input type="number" id="font_size" min="10" max="32" value="14" />
+    <small class="hint">悬浮窗文字大小，范围 10–32。</small>
+  </div>
+
+  <h2>运行日志</h2>
+  <div id="logs"></div>
+
+  <div class="footer">
     <span id="status"></span>
-    <button id="save">Save Settings</button>
+    <button id="save">保存设置</button>
   </div>
 
   <script src="main.js"></script>
