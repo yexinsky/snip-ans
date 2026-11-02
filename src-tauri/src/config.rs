@@ -114,23 +114,42 @@ impl From<AppConfigFile> for AppConfig {
     }
 }
 
-/// 首选配置路径；若该目录不可写（沙箱、只读漫游配置等），
-/// 退回本地临时目录，保证用户至少还能保存设置。
-pub fn get_config_path(app: &AppHandle) -> PathBuf {
-    let primary = app
-        .path()
-        .app_config_dir()
-        .map(|d| d.join("settings.json"))
-        .unwrap_or_else(|_| std::env::temp_dir().join("snip-ans-settings.json"));
+/// 配置候选位置，按优先级排列。
+///
+/// 首选应用配置目录；若该目录连创建都失败（沙箱、只读漫游配置、
+/// 受限的 AppData），依次退到本地应用数据、临时目录，
+/// 保证用户填的 Key 至少有一个落点，不会白填一遍。
+fn candidate_paths(app: &AppHandle) -> Vec<PathBuf> {
+    let mut out = Vec::new();
 
-    if is_dir_writable(primary.parent().unwrap_or(&primary)) {
-        return primary;
+    if let Ok(d) = app.path().app_config_dir() {
+        out.push(d.join("settings.json"));
     }
-    fallback_config_path()
+    if let Ok(d) = app.path().app_local_data_dir() {
+        out.push(d.join("settings.json"));
+    }
+    out.push(std::env::temp_dir().join("snip-ans-settings.json"));
+
+    // 去重，避免几个 API 返回同一路径时重复尝试
+    let mut seen = Vec::new();
+    out.retain(|p| {
+        let key = p.to_string_lossy().to_lowercase();
+        if seen.contains(&key) {
+            false
+        } else {
+            seen.push(key);
+            true
+        }
+    });
+    out
 }
 
-fn fallback_config_path() -> PathBuf {
-    std::env::temp_dir().join("snip-ans-settings.json")
+/// 首选配置路径，用于对外展示。
+pub fn get_config_path(app: &AppHandle) -> PathBuf {
+    candidate_paths(app)
+        .into_iter()
+        .find(|p| is_dir_writable(p.parent().unwrap_or(p)))
+        .unwrap_or_else(|| std::env::temp_dir().join("snip-ans-settings.json"))
 }
 
 /// 用一次真实的写+删来判断目录是否可写。
@@ -153,19 +172,9 @@ fn is_dir_writable(dir: &std::path::Path) -> bool {
 pub fn load_config(app: &AppHandle) -> AppConfig {
     // 读取时优先找已存在的文件：主目录可能不可写、但此前的配置还在，
     // 不能因为「写不进去」就当作「没配置过」而把用户的 Key 丢掉。
-    let primary = app
-        .path()
-        .app_config_dir()
-        .map(|d| d.join("settings.json"))
-        .unwrap_or_else(|_| fallback_config_path());
-    let fallback = fallback_config_path();
-
-    let path = if primary.exists() {
-        primary
-    } else if fallback.exists() {
-        fallback
-    } else {
-        return AppConfig::default();
+    let path = match candidate_paths(app).into_iter().find(|p| p.exists()) {
+        Some(p) => p,
+        None => return AppConfig::default(),
     };
 
     let content = match fs::read_to_string(&path) {
@@ -187,25 +196,83 @@ pub fn load_config(app: &AppHandle) -> AppConfig {
 }
 
 pub fn save_config(app: &AppHandle, config: &AppConfig) -> Result<(), String> {
-    let path = get_config_path(app);
-    if let Some(parent) = path.parent() {
-        if !parent.exists() {
-            fs::create_dir_all(parent).map_err(|e| format!("创建配置目录失败：{}", e))?;
-        }
-    }
     let content =
         serde_json::to_string_pretty(config).map_err(|e| format!("序列化配置失败：{}", e))?;
 
-    fs::write(&path, &content).map_err(|e| {
-        // 再试一次回退位置，尽量别让用户白填一遍
-        let fb = fallback_config_path();
-        match fs::write(&fb, &content) {
-            Ok(()) => format!(
-                "配置目录不可写，已改存到 {}（原错误：{}）",
-                fb.display(),
-                e
-            ),
-            Err(_) => format!("写入配置失败：{}", e),
+    // 逐个候选位置尝试。建目录失败也要继续试下一个，
+    // 而不是把「创建配置目录失败」直接抛给用户。
+    let candidates = candidate_paths(app);
+    let mut errors = Vec::new();
+
+    for (idx, path) in candidates.iter().enumerate() {
+        match write_at(path, &content) {
+            Ok(()) => {
+                if idx > 0 {
+                    eprintln!(
+                        "配置已改存到 {}（前序位置不可写：{}）",
+                        path.display(),
+                        errors.join("；")
+                    );
+                }
+                return Ok(());
+            }
+            Err(e) => errors.push(e),
         }
-    })
+    }
+
+    Err(format!(
+        "保存失败，以下位置均不可写：\n{}\n请检查是否有权限写入用户配置目录。",
+        errors.join("\n")
+    ))
+}
+
+/// 确保父目录存在并写入文件，返回失败原因（含建目录失败）。
+fn write_at(path: &std::path::Path, content: &str) -> Result<(), String> {
+    if let Some(parent) = path.parent() {
+        if !parent.exists() {
+            fs::create_dir_all(parent)
+                .map_err(|e| format!("创建目录 {} 失败：{}", parent.display(), e))?;
+        }
+    }
+    fs::write(path, content).map_err(|e| format!("写入 {} 失败：{}", path.display(), e))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 目录不可写时必须报错而不是 panic，且错误里带上路径便于排查。
+    #[test]
+    fn write_at_reports_unwritable_dir() {
+        let bad = std::env::temp_dir()
+            .join("snip-ans-test-no-such-parent")
+            .join("still-missing")
+            .join("settings.json");
+        // 用一个不可能创建的路径（把普通文件当目录用）
+        let blocker = std::env::temp_dir().join("snip-ans-test-blocker");
+        fs::write(&blocker, b"x").unwrap();
+        let impossible = blocker.join("settings.json");
+        let err = write_at(&impossible, "{}").unwrap_err();
+        assert!(!err.is_empty(), "应返回失败原因");
+        let _ = fs::remove_file(&blocker);
+        let _ = bad;
+    }
+
+    #[test]
+    fn write_at_creates_parent_and_writes() {
+        let dir = std::env::temp_dir().join("snip-ans-test-writable");
+        let _ = fs::remove_dir_all(&dir);
+        let file = dir.join("nested").join("settings.json");
+        write_at(&file, r#"{"provider":"opendesign"}"#).expect("应能创建目录并写入");
+        let back = fs::read_to_string(&file).unwrap();
+        assert!(back.contains("opendesign"));
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// 候选列表必须至少有一个可用落点，否则用户永远存不下配置。
+    #[test]
+    fn candidate_paths_has_temp_fallback() {
+        let tmp = std::env::temp_dir().join("snip-ans-settings.json");
+        assert!(tmp.to_string_lossy().contains("snip-ans-settings.json"));
+    }
 }
