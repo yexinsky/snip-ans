@@ -92,12 +92,14 @@ pub const PRESETS: &[ProviderPreset] = &[
         id: "opendesign",
         label: "OpenDesign 云端",
         protocol: "openai",
-        default_endpoint: "",
-        models_endpoint: "",
+        // 默认指向官方 Link 网关；用户若走自建隧道可在设置里改。
+        default_endpoint: "https://amr-link.open-design.ai/v1/chat/completions",
+        models_endpoint: "https://amr-link.open-design.ai/v1/models",
         auth: AuthKind::Bearer,
-        default_model: "",
+        // 已验证支持图片输入，适合截图识别
+        default_model: "deepseek-v4.1-flash",
         editable_endpoint: true,
-        hint: "OpenDesign 云端为 OpenAI 形状的 Link 端点：端点填 <linkUrl>/v1/chat/completions，Key 填 <runtimeKey>。该信息来自 vela login 生成的 ~/.amr/config.json。",
+        hint: "OpenDesign 云端（OpenAI 形状）。Key 填写 vela 登录后生成的 runtimeKey（见 ~/.amr/config.json 的 profiles.prod.runtimeKey）；端点如非官方网关，请填 <linkUrl>/v1/chat/completions。",
     },
     ProviderPreset {
         id: "gemini",
@@ -197,6 +199,21 @@ mod tests {
         let p = find_preset("opendesign").expect("opendesign 预设必须存在");
         assert_eq!(p.protocol, "openai");
         assert_eq!(p.auth, AuthKind::Bearer);
+        // 端点与模型均已对真实上游验证可用
+        assert_eq!(
+            p.models_endpoint,
+            "https://amr-link.open-design.ai/v1/models"
+        );
+        assert!(!p.default_model.is_empty(), "应带上默认模型，便于开箱即用");
+    }
+
+    #[test]
+    fn opendesign_derives_models_endpoint_from_custom_gateway() {
+        let url = resolve_models_endpoint(
+            "opendesign",
+            "https://my-tunnel.example.com/v1/chat/completions",
+        );
+        assert_eq!(url.as_deref(), Some("https://my-tunnel.example.com/v1/models"));
     }
 
     #[test]

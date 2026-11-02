@@ -48,14 +48,18 @@
 
 - **OpenAI**：填入 `https://api.openai.com/v1/chat/completions` 与平台 Key，模型拉取自 `/v1/models`。
 - **DeepSeek 官方**：填入 `https://api.deepseek.com/chat/completions` 与在 [DeepSeek 开放平台](https://platform.deepseek.com/) 申请的 Key；模型列表来自 `https://api.deepseek.com/models`，常见模型有 `deepseek-chat`、`deepseek-reasoner`。
-- **OpenDesign**：属于自建/账号绑定的 Link 端点，端点与密钥需从本机 `~/.amr/config.json` 中取出：
-  - `profiles.prod.linkUrl` → 填入 **API 端点**，并补上 `/v1/chat/completions`
-  - `profiles.prod.runtimeKey` → 填入 **API Key**
-  - 模型列表同源，点击「获取模型」会请求 `<linkUrl>/v1/models`。
+- **OpenDesign**：内置官方 Link 网关，默认端点已填好，选用后只需填 Key：
+  - **API 端点**：`https://amr-link.open-design.ai/v1/chat/completions`（默认值）
+  - **API Key**：`profiles.prod.runtimeKey`，取自本机 `~/.amr/config.json`
+  - 若使用自建隧道，把端点换成 `<linkUrl>/v1/chat/completions` 即可，模型列表会跟着走同一主机。
+  - 默认模型 `deepseek-v4.1-flash`，支持图片输入，适合截图识别。
 
+  实测该端点可返回 13 个模型，其中 `claude-haiku-5.5`、`deepseek-v4.1-flash`、`glm-5.3-flash`、`gpt-6-luna`、`mimo-v2.6-pro` 等 10 个支持图片输入。
   因模型清单与账号权限相关，只有「获取模型」真正返回了非空列表，才算该供应商配置成功。
 - **Google Gemini**：使用原生协议，认证头为 `x-goog-api-key`，模型列表解析自 `{ "models": [...] }`。
 - **自定义网关**：任意 OpenAI 兼容中转，端点留空时由「获取模型」按 `/chat/completions` 自动推导 `/models`。
+
+> 推理模型（如 `deepseek-reasoner`）会先花 token 思考。若答案被截断，会提示提高「最大输出 Token」，而不是抛出无法解析的错误。
 
 ### 界面与输出
 

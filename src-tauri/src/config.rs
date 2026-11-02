@@ -114,20 +114,60 @@ impl From<AppConfigFile> for AppConfig {
     }
 }
 
+/// 首选配置路径；若该目录不可写（沙箱、只读漫游配置等），
+/// 退回本地临时目录，保证用户至少还能保存设置。
 pub fn get_config_path(app: &AppHandle) -> PathBuf {
-    app.path()
+    let primary = app
+        .path()
         .app_config_dir()
-        .expect("无法获取应用配置目录")
-        .join("settings.json")
+        .map(|d| d.join("settings.json"))
+        .unwrap_or_else(|_| std::env::temp_dir().join("snip-ans-settings.json"));
+
+    if is_dir_writable(primary.parent().unwrap_or(&primary)) {
+        return primary;
+    }
+    fallback_config_path()
+}
+
+fn fallback_config_path() -> PathBuf {
+    std::env::temp_dir().join("snip-ans-settings.json")
+}
+
+/// 用一次真实的写+删来判断目录是否可写。
+fn is_dir_writable(dir: &std::path::Path) -> bool {
+    if fs::create_dir_all(dir).is_err() {
+        return false;
+    }
+    let probe = dir.join(".write-probe");
+    match fs::write(&probe, b"ok") {
+        Ok(()) => {
+            let _ = fs::remove_file(&probe);
+            true
+        }
+        Err(_) => false,
+    }
 }
 
 /// 读取配置。文件不存在时用默认值；解析失败时保留原文件备份并回退默认值，
 /// 避免静默地把用户的 API Key 清空。
 pub fn load_config(app: &AppHandle) -> AppConfig {
-    let path = get_config_path(app);
-    if !path.exists() {
+    // 读取时优先找已存在的文件：主目录可能不可写、但此前的配置还在，
+    // 不能因为「写不进去」就当作「没配置过」而把用户的 Key 丢掉。
+    let primary = app
+        .path()
+        .app_config_dir()
+        .map(|d| d.join("settings.json"))
+        .unwrap_or_else(|_| fallback_config_path());
+    let fallback = fallback_config_path();
+
+    let path = if primary.exists() {
+        primary
+    } else if fallback.exists() {
+        fallback
+    } else {
         return AppConfig::default();
-    }
+    };
+
     let content = match fs::read_to_string(&path) {
         Ok(c) => c,
         Err(e) => {
@@ -155,6 +195,17 @@ pub fn save_config(app: &AppHandle, config: &AppConfig) -> Result<(), String> {
     }
     let content =
         serde_json::to_string_pretty(config).map_err(|e| format!("序列化配置失败：{}", e))?;
-    fs::write(path, content).map_err(|e| format!("写入配置失败：{}", e))?;
-    Ok(())
+
+    fs::write(&path, &content).map_err(|e| {
+        // 再试一次回退位置，尽量别让用户白填一遍
+        let fb = fallback_config_path();
+        match fs::write(&fb, &content) {
+            Ok(()) => format!(
+                "配置目录不可写，已改存到 {}（原错误：{}）",
+                fb.display(),
+                e
+            ),
+            Err(_) => format!("写入配置失败：{}", e),
+        }
+    })
 }

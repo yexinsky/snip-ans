@@ -299,11 +299,30 @@ pub async fn query_ai_multi(config: &AppConfig, base64_images: &[String]) -> Res
         .await
         .map_err(|e| format!("响应不是合法 JSON：{}", e))?;
 
-    extract_answer(&body).ok_or_else(|| {
+    extract_answer(&body).ok_or_else(|| truncated_by_token_limit(&body).unwrap_or_else(|| {
         format!(
             "无法从响应中解析答案，响应片段：{}",
             truncate(&body.to_string(), 500)
         )
+    }))
+}
+
+/// 推理模型会把 token 先花在思考上，`max_tokens` 不够时 `content` 为空、
+/// `finish_reason` 为 `length`。这种情况要给出可操作的提示，
+/// 而不是让用户对着「无法解析响应」猜。
+fn truncated_by_token_limit(body: &serde_json::Value) -> Option<String> {
+    let choice = &body["choices"][0];
+    if choice["finish_reason"].as_str() != Some("length") {
+        return None;
+    }
+    let has_reasoning = choice["message"]["reasoning"]
+        .as_str()
+        .map(|s| !s.is_empty())
+        .unwrap_or(false);
+    Some(if has_reasoning {
+        "模型把输出额度用在了思考过程上，答案被截断。请在设置里提高「最大输出 Token」，或改用非推理模型。".to_string()
+    } else {
+        "模型输出被截断（达到最大 Token 上限），请提高「最大输出 Token」后重试。".to_string()
     })
 }
 
@@ -368,6 +387,27 @@ mod tests {
     fn rejects_unknown_model_list_shape() {
         let body = json!({"unexpected":true});
         assert!(parse_models(&body).is_err());
+    }
+
+    #[test]
+    fn accepts_empty_model_list_as_empty_result() {
+        let body = json!({"data":[]});
+        assert_eq!(parse_models(&body).unwrap().len(), 0);
+    }
+
+    #[test]
+    fn explains_truncation_when_reasoning_ate_the_budget() {
+        let body = json!({
+            "choices":[{"finish_reason":"length","message":{"content":"","reasoning":"思考了很久"}}]
+        });
+        let msg = truncated_by_token_limit(&body).expect("应识别为截断");
+        assert!(msg.contains("思考过程"), "实际：{}", msg);
+    }
+
+    #[test]
+    fn no_truncation_error_on_normal_stop() {
+        let body = json!({"choices":[{"finish_reason":"stop","message":{"content":"答案"}}]});
+        assert!(truncated_by_token_limit(&body).is_none());
     }
 
     /// 启动一个只回一次请求的本地服务，把收到的请求行与鉴权头回传给调用方，
@@ -463,5 +503,29 @@ mod tests {
 
         let err = fetch_models(&config, None, None).await.unwrap_err();
         assert!(err.contains("未返回任何可用模型"), "实际：{}", err);
+    }
+
+    /// 对真实 OpenDesign 上游的联调测试。默认忽略，避免把凭据写进仓库。
+    /// 手动执行：
+    ///   SNIPANS_OPENDESIGN_KEY=<runtimeKey> cargo test live_opendesign -- --ignored
+    #[tokio::test]
+    #[ignore]
+    async fn live_opendesign_lists_models() {
+        let Ok(key) = std::env::var("SNIPANS_OPENDESIGN_KEY") else {
+            eprintln!("未设置 SNIPANS_OPENDESIGN_KEY，跳过");
+            return;
+        };
+        let config = AppConfig {
+            provider: "opendesign".to_string(),
+            api_endpoint: "https://amr-link.open-design.ai/v1/chat/completions".to_string(),
+            api_key: key,
+            ..Default::default()
+        };
+
+        let models = fetch_models(&config, None, None)
+            .await
+            .expect("应能从 OpenDesign 拉到模型");
+        assert!(!models.is_empty(), "上游应返回非空模型列表");
+        eprintln!("OpenDesign 返回 {} 个模型", models.len());
     }
 }
