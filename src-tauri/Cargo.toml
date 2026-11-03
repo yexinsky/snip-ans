@@ -31,6 +31,14 @@ arboard = "3.6.1"
 base64 = "0.22.1"
 image = "0.25.9"
 
+# 悬浮窗隐身：WS_EX_NOACTIVATE / WS_EX_TOOLWINDOW / WDA_EXCLUDEFROMCAPTURE。
+# 这些能力 tauri/tao 没有暴露，只能直接调 Win32。
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = [
+    "Win32_Foundation",
+    "Win32_UI_WindowsAndMessaging",
+] }
+
 [dev-dependencies]
 # 仅测试用：驱动 fetch_models 这类异步函数的 #[tokio::test]
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }

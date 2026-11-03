@@ -48,11 +48,41 @@
             border-radius: 0;
             box-shadow: none;
             transition: background 0.15s ease;
+            /* 纯透明底 + 黑字在深色背景（游戏、深色网页、深色编辑器）上
+               几乎看不见。给文字加一圈白色描边，浅底深底都能读。 */
+            text-shadow:
+                0 0 2px rgba(255, 255, 255, 0.95),
+                0 0 3px rgba(255, 255, 255, 0.85),
+                1px 1px 2px rgba(255, 255, 255, 0.9),
+                -1px -1px 2px rgba(255, 255, 255, 0.9);
         }
 
         /* Stealth active state - clicked to reveal */
         body.stealth.active {
             background: rgba(0, 0, 0, 0.05);
+        }
+
+        /* 隐身模式下没有背景板，文字必须自带描边才读得出来。
+           这里用 4 向 + 2 层模糊叠出「白边黑字」，浅底深底都能辨认，
+           而白色描边在白底上会融进去，不会像实心底色那样显眼。 */
+        body.stealth #content,
+        body.stealth #content * {
+            color: #111;
+            text-shadow:
+                0 0 1px #fff,
+                0 0 2px #fff,
+                0 0 3px #fff,
+                1px 1px 1px #fff,
+                -1px -1px 1px #fff,
+                1px -1px 1px #fff,
+                -1px 1px 1px #fff;
+        }
+
+        /* 隐身模式下代码块不要深色底，否则等于把窗口暴露出来 */
+        body.stealth #content code,
+        body.stealth #content pre {
+            background: rgba(255, 255, 255, 0.55);
+            color: #111;
         }
 
         /* Close Button Common */

@@ -29,6 +29,7 @@
         "shadow": false,
         "skipTaskbar": true,
         "visible": false,
+        "focusable": false,
         "url": "overlay.html"
       }
     ],

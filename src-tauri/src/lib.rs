@@ -2,6 +2,7 @@ pub mod api;
 pub mod config;
 pub mod provider;
 pub mod screenshot;
+pub mod stealth;
 
 use arboard::Clipboard;
 use tauri::Emitter;
@@ -322,7 +323,26 @@ pub fn run() {
                         // 截图热键触发 - 只负责截图并缓存
                         log_to_main(&app, "已触发截图快捷键");
 
-                        match screenshot::capture_primary_screen() {
+                        // 截图前先把悬浮窗收起来，原因有两点：
+                        //   1. 它固定在屏幕左上角，会挡住题干；
+                        //   2. 它开了 WDA_EXCLUDEFROMCAPTURE，该区域在截图里
+                        //      是黑的，会把题目内容挖掉一块。
+                        // 截完再恢复原来的可见状态。
+                        let hwnd = overlay_hwnd(&app);
+                        let was_visible = stealth::is_really_visible(hwnd);
+                        if was_visible {
+                            stealth::hide_window(hwnd);
+                            // 给 DWM 一点时间把窗口真正从画面上撤掉
+                            std::thread::sleep(std::time::Duration::from_millis(120));
+                        }
+
+                        let shot = screenshot::capture_primary_screen();
+
+                        if was_visible {
+                            reveal_overlay(&app);
+                        }
+
+                        match shot {
                             Ok(base64_img) => {
                                 let count = {
                                     let mut cache = image_cache.lock().unwrap();
@@ -480,26 +500,34 @@ pub fn run() {
                         // 老板键触发 - 切换悬浮窗显示/隐藏
                         log_to_main(&app, "已触发老板键，正在切换悬浮窗");
 
-                        if let Some(overlay) = app.get_webview_window("overlay") {
-                            if overlay.is_visible().unwrap_or(false) {
-                                let _ = overlay.hide();
-                                println!("悬浮窗已隐藏");
-                            } else {
-                                let _ = overlay.show();
-                                let _ = overlay.set_focus();
-                                println!("悬浮窗已显示");
-                            }
+                        // 必须问 Win32 的真实状态：我们用 SW_SHOWNA 自己显示
+                        // 窗口，tao 内部缓存的 WindowFlags 不会更新，
+                        // 用 overlay.is_visible() 会一直判成「隐藏」。
+                        let hwnd = overlay_hwnd(&app);
+                        let visible = stealth::is_really_visible(hwnd);
+
+                        if visible {
+                            // 同样不能调用 overlay.hide()：tao 内部还认为窗口
+                            // 是隐藏的（我们的 SW_SHOWNA 它看不见），
+                            // apply_diff 判定「无变化」就直接返回，收不起来。
+                            stealth::hide_window(hwnd);
+                            println!("悬浮窗已隐藏");
+                        } else {
+                            reveal_overlay(&app);
+                            println!("悬浮窗已显示");
                         }
                     }
                 }
             });
 
-            // 若配置为使用悬浮窗，启动时显示
+            // --- 悬浮窗隐身 ---
+            // 「不抢焦点」由 tauri.conf.json 的 "focusable": false 在建窗时就
+            // 设好了（运行时补会晚于 ShowWindow，实测无效）。这里只把启动时
+            // 就要显示的窗口按同样的隐身流程亮出来。
             let config = config::load_config(app.handle());
             if config.output_mode == "overlay" || config.output_mode == "both" {
-                if let Some(overlay) = app.get_webview_window("overlay") {
-                    let _ = overlay.show();
-                }
+                reveal_overlay(app.handle());
+                println!("悬浮窗已启用隐身：不抢焦点、不进 Alt+Tab、录屏/截图拍不到");
             }
 
             Ok(())
@@ -515,11 +543,60 @@ fn log_to_main(app: &tauri::AppHandle, msg: &str) {
     }
 }
 
+/// 取悬浮窗的原生句柄。拿不到就返回 0，调用方当作「不做隐身处理」。
+fn overlay_hwnd(app: &tauri::AppHandle) -> isize {
+    app.get_webview_window("overlay")
+        .and_then(|w| w.hwnd().ok())
+        .map(|h| h.0 as isize)
+        .unwrap_or(0)
+}
+
+/// 让悬浮窗可见，且**不夺走前台焦点**、不进入 Alt+Tab、不被屏幕捕获。
+///
+/// 原先直接用 `overlay.show()` 会激活窗口 —— 监控软件只要轮询
+/// `GetForegroundWindow()` 就能发现「前台突然变成了 snip-ans」。
+///
+/// 「不抢焦点」靠 tauri.conf.json 里的 `"focusable": false` 在**建窗时**就
+/// 带上 `WS_EX_NOACTIVATE` 解决。不能靠运行时补：tao 的 apply_diff 是先
+/// `ShowWindow(SW_SHOW)` 把窗口亮出来，之后才重建扩展样式，等我们发现时
+/// 焦点早被抢走了。
+///
+/// 剩下两项有各自的时机要求：
+///   * `SetWindowDisplayAffinity` 对**隐藏**窗口调用会失败，必须 show 之后；
+///   * tao 每次 show/hide 都整份重建扩展样式，`WS_EX_TOOLWINDOW` 会被冲掉，
+///     所以也要在 show 之后补。
+fn reveal_overlay(app: &tauri::AppHandle) {
+    if let Some(overlay) = app.get_webview_window("overlay") {
+        let hwnd = overlay_hwnd(app);
+
+        // 注意：这里**不能**调用 overlay.show() 或 overlay.unminimize()。
+        //   * show() 内部是 ShowWindow(SW_SHOW)，会激活窗口抢走前台；
+        //   * unminimize() 走 SW_RESTORE，同样会激活窗口。
+        // 两者都会在隐身样式生效前就把「前台进程」暴露成 snip-ans。
+        // 这里直接用 Win32 完成「挂样式 → 不激活显示」。
+        if !stealth::reveal_stealth(hwnd) {
+            // 拿不到句柄（异常情况）就退回 tauri 的普通 show，
+            // 至少保证窗口能显示出来，只是会抢一次焦点。
+            let _ = overlay.show();
+            return;
+        }
+
+        println!(
+            "[隐身] ExStyle=0x{:X}  NOACTIVATE={}  TOOLWINDOW={}",
+            stealth::ex_style(hwnd),
+            stealth::has_noactivate(hwnd),
+            stealth::has_toolwindow(hwnd)
+        );
+    }
+}
+
 /// 在悬浮窗上显示一条短消息（用于缓存进度、错误提示）。
 fn show_overlay_message(app: &tauri::AppHandle, msg: &str) {
     if let Some(overlay) = app.get_webview_window("overlay") {
-        let _ = overlay.unminimize();
-        let _ = overlay.show();
+        let hwnd = overlay_hwnd(app);
+        if !stealth::reveal_stealth(hwnd) {
+            let _ = overlay.show();
+        }
         let _ = app.emit_to("overlay", "new-answer", msg.to_string());
     }
 }
