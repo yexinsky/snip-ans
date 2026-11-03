@@ -371,7 +371,11 @@ pub fn run() {
                         let app_clone = app.clone();
                         let cache_clone = image_cache.clone();
 
-                        tauri::async_runtime::spawn(async move {
+                        // 这里不能用 tauri::async_runtime::spawn：外层接收循环
+                        // 用 crossbeam 的 recv() 同步阻塞，会长时间占住一个 worker
+                        // 线程，导致这里排队的任务一直轮不到执行（表现为截图键
+                        // 正常、发送键毫无反应）。改用独立的 OS 线程更稳妥。
+                        std::thread::spawn(move || {
                             let images_to_send = {
                                 let cache = cache_clone.lock().unwrap();
                                 let images = cache.images.clone();
@@ -403,7 +407,10 @@ pub fn run() {
                                 }
                             }
 
-                            match api::query_ai_multi(&config, &images_to_send).await {
+                            match tauri::async_runtime::block_on(api::query_ai_multi(
+                                &config,
+                                &images_to_send,
+                            )) {
                                 Ok(answer) => {
                                     // 只有成功才清空缓存，失败时保留以便重试
                                     {

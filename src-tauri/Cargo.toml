@@ -12,7 +12,9 @@ edition = "2021"
 # to make the lib name unique and wouldn't conflict with the bin name.
 # This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
 name = "snip_ans_lib"
-crate-type = ["staticlib", "cdylib", "rlib"]
+# 只用 rlib：桌面应用只需 bin，额外的 cdylib/staticlib 会在 target 下
+# 生成一份 37MB 的 snip_ans_lib.dll，被安装包一并收进去，白白让 MSI 翻倍。
+crate-type = ["rlib"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
